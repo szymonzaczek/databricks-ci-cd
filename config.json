@@ -1,0 +1,33 @@
+{
+    "databricks_host": {
+        "dv": "https://adb-xx.yy.azuredatabricks.net/",
+        "stg": "https://adb-xxx.yyy.azuredatabricks.net/",
+        "prd": "https://adb-xxxx.yyyy.azuredatabricks.net/"
+    },
+    "databricks_cluster_id": {
+        "dv": ["10-20-xx"],
+        "stg": ["11-21-xy"],
+        "prd": ["12-22-yy"]
+    },
+    "databricks_ostg_id": {
+        "dv": "xxx",
+        "stg": "yyy",
+        "prd": "zzz"
+    },
+    "databricks_port": {"dv": "15001", "stg": "15001", "prd": "15001"},
+    "dbfs_package_dir": {
+        "dv": "dbfs:/FileStore/jars/",
+        "stg": "dbfs:/FileStore/jars/",
+        "prd": "dbfs:/FileStore/jars/"
+    },
+    "dbfs_init_script_dir": {
+        "dv": "dbfs:/databricks/scripts/",
+        "stg": "dbfs:/databricks/scripts/",
+        "prd": "dbfs:/databricks/scripts/"
+    },
+    "keyvault_name": {
+        "dv": "xxx",
+        "stg": "yyy",
+        "prd": "zzz"
+    }
+}
