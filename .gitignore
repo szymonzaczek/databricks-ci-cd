@@ -1,0 +1,14 @@
+build/
+dist/
+__pycache__/
+.venv/
+.history/
+.vscode/
+.eggs/
+.idea/
+*.egg-info
+*doc/
+.pytest_cache/
+secrets.txt
+TEST-LOCAL.xml
+test.xml
