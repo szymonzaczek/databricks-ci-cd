@@ -72,6 +72,15 @@ steps:
   displayName: 'Build wheel files'
 
 - script: |
+    echo "
+    databricks_host $(databricks_host)
+    databricks_token $(databricks_token)
+    databricks_cluster_id $(databricks_cluster_id)
+    databricks_ord_id $(databricks_org_id)
+    databricks_port $(databricks_port)"
+  displayName: 'Debug dbconnect params'
+
+- script: |
     echo "y
     $(databricks_host)
     $(databricks_token)
