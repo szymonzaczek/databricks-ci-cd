@@ -1,0 +1,118 @@
+parameters:
+- name: environment
+  default: ''
+- name: artifactDir
+  default: 'artifact'
+- name: service_connection
+  default: 'dv_service_connection'
+- name: artifact_databricks
+  default: 'DatabricksBuild'
+- name: project
+  default: 'xx'
+- name: pipeline_id
+  default: '17'
+- name: build_version_to_download
+  default: 'latest'
+- name: config_file
+  default: 'config_temp.json'
+
+
+steps:
+- task: DownloadPipelineArtifact@2
+  inputs:
+    buildType: 'specific'
+    project: ${{ parameters.project }}
+    definition: ${{ parameters.pipeline_id }}
+    buildVersionToDownload: ${{ parameters.build_version_to_download }}
+    targetPath: '$(Pipeline.Workspace)'
+    artifact: ${{ parameters.artifact_databricks }}
+
+- task: ExtractFiles@1
+  inputs:
+    archiveFilePatterns: '$(Agent.BuildDirectory)/*.zip'
+    destinationFolder: ${{ parameters.artifactDir }}
+    cleanDestinationFolder: true
+    overwriteExistingFiles: false
+
+- script: |
+    pip install -r $(System.DefaultWorkingDirectory)/${{ parameters.artifactDir }}/requirements.txt
+  displayName: 'Install ci_cd_scripts requirements'
+
+- script: |
+    python $(System.DefaultWorkingDirectory)/${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py read_env_cfg ${{ parameters.environment }} $(System.DefaultWorkingDirectory)/${{ parameters.artifactDir }}/${{ parameters.config_file }}
+#    python $(System.DefaultWorkingDirectory)/${{ parameters.artifactDir }}/ci_cd_scripts/read_config_cli.py $(System.DefaultWorkingDirectory)/${{ parameters.artifactDir }}/${{ parameters.config_file }}
+  displayName: 'Set env variables from JSON cfg file'
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az keyvault network-rule add --ip-address $(curl ipinfo.io/ip) --name $(keyvault_name)
+    addSpnToEnvironment: true
+  displayName: 'Add current IP to the keyvault whitelist'
+
+- task: AzureKeyVault@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    KeyVaultName: $(keyvault_name)
+    SecretsFilter: '*'
+    RunAsPreJob: false
+  displayName: 'Get secrets from the keyvault'
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az keyvault network-rule remove --ip-address $(curl ipinfo.io/ip)/32 --name $(keyvault_name)
+    addSpnToEnvironment: true
+  condition: always()
+  displayName: 'Remove current IP from the whitelist'
+
+- script: |
+    echo $(databricks-token) > ${{ parameters.artifactDir }}/secrets.txt
+    cat ${{ parameters.artifactDir }}/secrets.txt
+  displayName: 'Output databricks secret to a file'
+
+- script: |
+   python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py find_files_job ${{ parameters.artifactDir }} *.whl
+   python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py find_files_job ${{ parameters.artifactDir }} *secrets.txt secret
+   python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py find_files_job ${{ parameters.artifactDir }} ${{ parameters.config_file }}
+   python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py find_files_job ${{ parameters.artifactDir }} *.sh
+   python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py find_files_job ${{ parameters.artifactDir }} *requirements.txt requirements
+  displayName: 'Find files using python script and export output as bash variables'
+
+# TODO: to be removed
+- script: |
+   echo $(databricks_host)
+   echo $(databricks_cluster_id)
+   echo $(databricks_org_id)
+   echo $(databricks_port)
+   echo $(dbfs_package_dir)
+   echo $(dbfs_init_script_dir)
+   echo $(whl_files)
+   echo $(txt_files)
+   echo $(json_files)
+   echo $(sh_files)
+   echo $(secret_files)
+   echo $(requirements_files)
+  displayName: 'Debug variables from environment_parameters.json'
+
+- script: |
+    python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py process_dependencies $(json_files) $(secret_files) $(requirements_files)
+  displayName: 'Install packages dependencies on the cluster'
+
+- script: |
+    python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py process_all_packages $(json_files) $(secret_files) $(whl_files)
+  displayName: 'Upload library to the cluster using databricks_api_cli.py '
+
+- script: |
+    python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py upload_init_script_workflow $(json_files) $(secret_files) $(sh_files) $(dbfs_init_script_dir)
+  displayName: 'Upload init script to dbfs'
+
+- script: |
+    python ${{ parameters.artifactDir }}/ci_cd_scripts/ci_cd_cli.py upload_notebooks_workflow $(json_files) $(secret_files) ${{ parameters.artifactDir }}/ci_cd_scripts/notebooks adf_deployed/notebooks/
+  displayName: 'Upload notebooks to databricks workspace'

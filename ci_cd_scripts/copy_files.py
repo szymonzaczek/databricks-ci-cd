@@ -9,6 +9,14 @@ def copy_files(artifact_dir: str, files_variable: str) -> None:
     for file in files:
         target_path = artifact_dir + file.split("/")[-1]
         copy(file, target_path)
+        # TODO: REMOVE - it's just for debugging purposes
+        print(f"file: {file}\ntarget: {target_path}")
+        with open(file, 'rb') as f:
+            print(f"Target path content:\n{f.read()}")
+        with open(target_path, 'rb') as f:
+            print(f"Target path content:\n{f.read()}")
+
+
 
 
 def copy_requirements(

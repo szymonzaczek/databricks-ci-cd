@@ -63,6 +63,7 @@ def find_files_in_nested_dir(
     files_list = []
     for entity in glob.glob(search_path, recursive=True):
         files_list.append(entity)
+    print(f"files_list: {files_list}")
     return files_list
 
 

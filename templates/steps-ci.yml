@@ -1,0 +1,165 @@
+parameters:
+- name: config_file
+  default: 'config_temp.json'
+- name: service_connection
+  default: ''
+- name: build_name
+  default: ''
+
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(python.version)'
+  displayName: 'Use Python $(python.version)'
+
+- script: |
+    pip install -r ci_cd_scripts/requirements.txt
+  displayName: 'Install adf_databricks_ci_cd/ci_cd_scripts requirements'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py read_env_cfg dv ${{ parameters.config_file }}
+  displayName: 'Set env variables from JSON cfg file'
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az keyvault network-rule add --ip-address $(curl ipinfo.io/ip) --name $(keyvault_name)
+    addSpnToEnvironment: true
+  displayName: 'Add current IP to the keyvault whitelist'
+
+- task: AzureKeyVault@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    KeyVaultName: $(keyvault_name)
+    SecretsFilter: '*'
+    RunAsPreJob: false
+  displayName: 'Get secrets from the keyvault'
+
+- script: |
+    echo "
+    ado-evdata-token $(ado-evdata-token)
+    databricks_token $(databricks-token)
+    databricks-client-secret $(databricks-client-secret)
+    event-orchestrator-tests $(event-orchestrator-tests)
+    "
+  displayName: 'Debug keyvault secrets'
+
+- task: AzureCLI@2
+  inputs:
+    azureSubscription: ${{ parameters.service_connection }}
+    scriptType: 'bash'
+    scriptLocation: 'inlineScript'
+    inlineScript: |
+      az keyvault network-rule remove --ip-address $(curl ipinfo.io/ip)/32 --name $(keyvault_name)
+    addSpnToEnvironment: true
+    condition: always()
+  displayName: 'Remove current IP from the whitelist'
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install wheel
+  displayName: 'Upgrade pip and install wheel package'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py find_files_in_nested_dir_job $(Build.Repository.LocalPath) 1 requirements txt
+  displayName: 'Find dependencies and output them as bash variable'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py process_requirements $(requirements_files) dev
+  displayName: 'Install dependencies using cli script'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py find_files_in_nested_dir_job $(Build.Repository.LocalPath) 1 None py setup
+  displayName: 'Find setup.py files'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py process_setup_py $(setup_files)
+  displayName: 'Build wheel files'
+
+- script: |
+    echo "
+    databricks_host $(databricks_host)
+    databricks_token $(databricks-token)
+    databricks_cluster_id $(databricks_cluster_id)
+    databricks_ord_id $(databricks_org_id)
+    databricks_port $(databricks_port)"
+  displayName: 'Debug dbconnect params'
+
+- script: |
+    echo "y
+    $(databricks_host)
+    $(databricks-token)
+    $(databricks_cluster_id)
+    $(databricks_org_id)
+    $(databricks_port)" | databricks-connect configure
+  displayName: 'Configure DBConnect'
+
+- script: |
+    python -m pytest --junit-xml=$(Build.Repository.LocalPath)/TEST-LOCAL.xml || true
+  displayName: 'Run Python Unit Tests using DBConnect'
+
+- task: PublishTestResults@2
+  inputs:
+    testResultsFiles: '**/TEST-*.xml'
+    failTaskOnFailedTests: true
+    publishRunAttachments: true
+
+- script: |
+    git diff --name-only --diff-filter=AMR HEAD^1 HEAD | xargs -I '{}' cp --parents -r '{}' $(Build.BinariesDirectory)
+    mkdir -p $(Build.BinariesDirectory)/libraries/
+    mkdir -p $(Build.BinariesDirectory)/libraries/ci_cd_scripts
+    cp $(Build.Repository.LocalPath)/ci_cd_scripts/*.* $(Build.BinariesDirectory)/libraries/ci_cd_scripts
+    cp $(Build.Repository.LocalPath)/${{ parameters.config_file }} $(Build.BinariesDirectory)/libraries/
+  displayName: 'Get Changes for Azure Pipeline Artifact, copy ci_cd_scripts and config to the artifact directory'
+
+- script: |
+    python ci_cd_scripts/ci_cd_cli.py find_files_in_nested_dir_job $(Build.Repository.LocalPath) 0 dist whl
+  displayName: 'Find whl files using python script and export output as bash variable'
+
+- script: |
+    python $(Build.Repository.LocalPath)/ci_cd_scripts/ci_cd_cli.py copy_files $(Build.BinariesDirectory)/libraries/ $(dist_files)
+  displayName: 'Copy wheel files to the artifact directory'
+
+- script: |
+    python $(Build.Repository.LocalPath)/ci_cd_scripts/ci_cd_cli.py discover_and_copy_notebooks_workflow $(Build.Repository.LocalPath) notebooks $(Build.BinariesDirectory)/libraries/ci_cd_scripts/notebooks
+  displayName: 'Copy notebooks to the artifact directory'
+
+- script: |
+    echo "ls $(ls)
+    ls dist $(ls dist/)
+    pwd $(pwd)
+    dist files $(dist_files)
+    ls build binaries $(ls /home/vsts/work/1/b/libraries)
+    "
+  displayName: 'Dir content debug'
+
+- script: |
+    echo "
+    dbfs_package_dir $(dbfs_package_dir) 
+    whl_files $(whl_files)
+    dist_files $(dist_files)
+    requirements_files $(requirements_files)"
+  displayName: 'Init script params debug'
+
+- script: |
+    python $(Build.Repository.LocalPath)/ci_cd_scripts/ci_cd_cli.py create_init_script_workflow $(Build.BinariesDirectory)/libraries $(Build.BinariesDirectory)/libraries/databricks_init_script.sh $(dbfs_package_dir) $(dist_files) $(requirements_files)
+  displayName: 'Create init script'
+
+- script: |
+    python $(Build.Repository.LocalPath)/ci_cd_scripts/ci_cd_cli.py copy_requirements $(Build.BinariesDirectory)/libraries $(requirements_files)
+  displayName: 'Copy requirements files to the artifact directory'
+
+- task: ArchiveFiles@2
+  inputs:
+    includeRootFolder: false
+    archiveType: 'zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+    replaceExistingArchive: true
+    rootFolderOrFile: '$(Build.BinariesDirectory)/libraries'
+
+- task: PublishBuildArtifacts@1
+  inputs:
+    ArtifactName: ${{ parameters.build_name }}
