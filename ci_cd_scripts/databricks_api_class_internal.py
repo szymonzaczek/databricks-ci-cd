@@ -4,13 +4,10 @@ import json
 import base64
 from typing import Union
 
-if os.environ.get("ENVIRONMENT_NAME") == "prd_bi":
-    ENVIRONMENT_NAME = "prd"
-else:
-    ENVIRONMENT_NAME = os.environ.get("ENVIRONMENT_NAME")
+
+ENVIRONMENT_NAME = os.environ.get("ENVIRONMENT_NAME")
 print(f"Environment name: {ENVIRONMENT_NAME}")
 BUILD_REPOSITORY_NAME = os.environ.get("BUILD_REPOSITORY_NAME")
-
 
 class DatabricksRequest:
     """

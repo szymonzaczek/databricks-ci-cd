@@ -2,13 +2,9 @@ import os
 import re
 import time
 import glob
-import datetime
 from pathlib import Path
 
-
 from read_config import read_env_cfg
-
-
 from databricks_api_class_internal import DatabricksRequest
 
 if os.environ.get("ENVIRONMENT_NAME") == "prd_bi":
@@ -49,14 +45,11 @@ def upload_notebooks_workflow(
     cfg_path: str,
     secret_path: str,
     notebooks_artifact_path: str,
-    # bi_repo: str = "False",
-    notebooks_target_dir: str = "/adf_deployed/notebooks/",
-    notebooks_manage_group: str = "",
+    notebooks_target_dir: str = "/deployed/notebooks/",
 ):
     """
     Workflow for uploading notebooks to Databricks workspace.
     It does not need cluster info.
-
     """
     print(f"notebooks_target_dir: {notebooks_target_dir}")
     print(f"notebooks_artifact_path: {notebooks_artifact_path}")
@@ -272,27 +265,7 @@ def process_dependencies(cfg_path: str, secret_path: str, requirements_variable:
                 for line in f.readlines():
                     library_to_install = "".join(line.split())
                     libraries_to_install.append(library_to_install)
-        cluster_libraries = api_object.get_cluster_libraries()
-        installed_libraries = api_object.extract_installed_libraries_names(
-            cluster_libraries
-        )
-        restart_flag = False
-        for installed_library_raw in installed_libraries:
-            print(f"installed library: {installed_library_raw}")
-            if "pypi" in installed_library_raw.keys():
-                installed_library = installed_library_raw.get("pypi").get("package")
-                print(f"installed library: {installed_library_raw}")
-                if installed_library in libraries_to_install:
-                    print(
-                        f"Specified library {installed_library_raw} is installed on the cluster - "
-                        f"uninstalling and restarting the cluster"
-                    )
-                    response = api_object.uninstall_library(installed_library_raw)
-                    print(f"Response: {response}")
-                    restart_flag = True
-        if restart_flag is True:
-            api_object.restart_cluster()
-            time.sleep(10)
         for library_to_install in libraries_to_install:
+            print(f"Library to be installed on the cluster: {library_to_install}")
             response = api_object.install_library_pip(library_to_install)
             print(f"response: {response}")

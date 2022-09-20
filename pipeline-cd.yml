@@ -10,6 +10,8 @@ parameters:
   default: '46'
 - name: project
   default: 'xx'
+- name: service_connection
+  default: 'xx'
 
 trigger: none
 
@@ -38,7 +40,7 @@ stages:
               - template: templates/steps-cd.yml
                 parameters:
                   environment: ${{ value }}
-                  service_connection: 'LAB Data Platform Develop'
+                  service_connection: ${{ parameters.service_connection }}
                   artifactDir: 'artifact'
                   pipeline_id: ${{ parameters.pipeline_id }}
                   project: ${{ parameters.project }}
