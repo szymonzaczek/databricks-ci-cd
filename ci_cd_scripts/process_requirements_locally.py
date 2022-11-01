@@ -11,7 +11,7 @@ def install_locally(package: str) -> None:
 
 def process_requirements(
     requirements_variable: str,
-    requirements_type: str,
+    requirements_type: str = "dev",
 ) -> None:
     """
     Function for installing dependancies during CI step.
@@ -24,5 +24,8 @@ def process_requirements(
     for req_file in requirements:
         if req_file.split("/")[-1].split(".")[-2] == requirements_type:
             requirements_files.append(req_file)
+    print(f"requirements_files: {requirements_files}")
     for file in requirements_files:
+        print(f"Current file: {file}")
         install_locally(file)
+

@@ -1,0 +1,46 @@
+parameters:
+- name: environment
+  displayName: 'List of environments'
+  type: object
+  default:
+    - 'dv'
+    - 'rg'
+    - 'prd'
+- name: pipeline_id
+  default: '46'
+- name: project
+  default: 'xx'
+- name: service_connection
+  default: 'xx'
+
+trigger: none
+
+resources:
+  pipelines:
+  - pipeline: databricks-ci-article-test
+    source: databricks-ci-article-test
+    trigger:
+      enabled: true
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+- ${{ each value in parameters.environment }}:
+  - stage: DATABRICKS_CD_${{ upper(value) }}
+    displayName: 'DATABRICKS_CD_${{ upper(value) }}'
+    jobs:
+    - deployment: DATABRICKS_DEPLOY_${{ upper(value) }}
+      displayName: 'DATABRICKS_DEPLOY_${{ upper(value) }}'
+      environment: ${{ value }}
+      strategy:
+        runOnce:
+          deploy:
+            steps:
+              - template: templates/steps-cd.yml
+                parameters:
+                  environment: ${{ value }}
+                  service_connection: ${{ parameters.service_connection }}
+                  artifactDir: 'artifact'
+                  pipeline_id: ${{ parameters.pipeline_id }}
+                  project: ${{ parameters.project }}

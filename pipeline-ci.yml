@@ -1,0 +1,32 @@
+parameters:
+- name: config_file
+  default: 'config_temp.json'
+- name: service_connection
+  default: 'service_connection_name'
+- name: build_name
+  default: 'DatabricksBuild'
+
+pool:
+  vmImage: ubuntu-latest
+
+trigger:
+  branches:
+    include:
+      - feature*
+      - main
+
+stages:
+- stage: DATABRICKS_CI
+  displayName: "DATABRICKS_CI"
+  jobs:
+  - job: DATABRICKS_CI
+    strategy:
+      matrix:
+        Python38:
+          python.version: '3.8'
+    steps:
+      - template: /templates/steps-ci.yml
+        parameters:
+          config_file: ${{ parameters.config_file }}
+          service_connection: ${{ parameters.service_connection }}
+          build_name: ${{ parameters.build_name }}
